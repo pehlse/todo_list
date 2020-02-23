@@ -20,6 +20,20 @@ class _HomeState extends State<Home> {
 
   final _todoController = TextEditingController();
 
+  Map<String, dynamic> _lastRemoved;
+  int _lastRemovedPosition;
+
+  @override
+  void initState() {
+    super.initState();
+
+    readData().then((data) {
+      setState(() {
+        todoList = json.decode(data);
+      });
+    });
+  }
+
   void _addToDo() {
     setState(() {
       Map<String, dynamic> newTodo = Map();
@@ -31,6 +45,19 @@ class _HomeState extends State<Home> {
       newTodo['ok'] = false;
 
       todoList.add(newTodo);
+      saveData();
+    });
+  }
+
+  Future<Null> _refresh() async {
+    await Future.delayed(Duration(seconds: 1));
+
+    setState(() {
+      todoList.sort((a, b) {
+        if (a["ok"] && !b["ok"]) return 1;
+        else if (!a["ok"] && b["ok"]) return -1;
+        else return 0;
+      });
     });
   }
 
@@ -67,26 +94,69 @@ class _HomeState extends State<Home> {
             ),
           ),
           Expanded(
+              child: RefreshIndicator(
             child: ListView.builder(
-                padding: EdgeInsets.only(top: 10.0),
-                itemCount: todoList.length,
-                itemBuilder: (context, index) {
-                  return CheckboxListTile(
-                    title: Text(todoList[index]['title']),
-                    value: todoList[index]['ok'],
-                    secondary: CircleAvatar(
-                      child: Icon(todoList[index]['ok'] ? Icons.check : Icons.error),
-                    ),
-                    onChanged: (bool value) {
-                      setState(() {
-                        todoList[index]['ok'] = value;
-                      });
-                    },
-                  );
-                }),
-          )
+              padding: EdgeInsets.only(top: 10.0),
+              itemCount: todoList.length,
+              itemBuilder: buildItem,
+            ),
+            onRefresh: _refresh,
+          )),
         ],
       ),
+    );
+  }
+
+  Widget buildItem(context, index) {
+    return Dismissible(
+      key: UniqueKey(),
+      background: Container(
+        color: Colors.red,
+        child: Align(
+          alignment: Alignment(-0.9, 0.0),
+          child: Icon(Icons.delete, color: Colors.white),
+        ),
+      ),
+      direction: DismissDirection.startToEnd,
+      child: CheckboxListTile(
+        title: Text(todoList[index]['title']),
+        value: todoList[index]['ok'],
+        secondary: CircleAvatar(
+          child: Icon(todoList[index]['ok'] ? Icons.check : Icons.error),
+        ),
+        onChanged: (bool value) {
+          setState(() {
+            todoList[index]['ok'] = value;
+            saveData();
+          });
+        },
+      ),
+      onDismissed: (direction) {
+        setState(() {
+          _lastRemoved = Map.from(todoList[index]);
+          _lastRemovedPosition = index;
+          todoList.removeAt(index);
+
+          saveData();
+
+          final snack = SnackBar(
+            content: Text("Tarefa ${_lastRemoved["title"]} reomovida !"),
+            action: SnackBarAction(
+              label: "Desfazer",
+              onPressed: () {
+                setState(() {
+                  todoList.insert(_lastRemovedPosition, _lastRemoved);
+                  saveData();
+                });
+              },
+            ),
+            duration: Duration(seconds: 2),
+          );
+
+          Scaffold.of(context).removeCurrentSnackBar();
+          Scaffold.of(context).showSnackBar(snack);
+        });
+      },
     );
   }
 
